@@ -14,10 +14,85 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
+
+# Save each plot into the repository's figures/ directory (overwriting existing files).
+FIGURES_DIR = Path(__file__).resolve().parent / "figures"
+FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+def save_plot(filename):
+    path = FIGURES_DIR / filename
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved {path}")
+from pathlib import Path
 from scipy.optimize import brentq
 from scipy.signal import fftconvolve
 from scipy.stats import ttest_1samp
 from tqdm.auto import tqdm
+
+"""## Full Pareto-sum recursion — Table and Figure 1"""
+
+# Numerical convolution evaluates the entire sum-tail recursion, not its asymptotic expansion.
+K_VALUES = [2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+TARGET_ALPHA = 0.05
+GRID_STEP = 0.005
+LOWER_ALPHA = 0.03
+
+def build_pareto_tails(max_k=max(K_VALUES), h=GRID_STEP, min_alpha=LOWER_ALPHA):
+    # If Z=Y-1 and P(Y>=y)=1/y, P(Z in [jh,(j+1)h)) is known exactly.
+    max_excess = max_k * (1 / min_alpha - 1) + 2
+    n_bins = int(np.ceil(max_excess / h)) + 2
+    edges = np.arange(n_bins+1) * h
+    kernel = 1/(1+edges[:-1]) - 1/(1+edges[1:])
+    pmf = kernel.copy()
+    tails = {}
+    for k in range(1, max_k+1):
+        if k > 1:
+            pmf = fftconvolve(pmf, kernel)[:n_bins]
+            pmf = np.maximum(pmf, 0)
+        if k in K_VALUES:
+            tails[k] = np.concatenate(([1.], 1 - np.cumsum(pmf)))
+    return tails
+
+PARETO_TAILS = build_pareto_tails()
+
+def B_K(k, a, tails=PARETO_TAILS, h=GRID_STEP):
+    # Full recursion (approximated numerically on the bin grid): T_1(s)=1/s; T_k(s)=1/(s-k+1)+integral_1^(s-k+1) T_(k-1)(s-y)/y^2 dy.
+    # Evaluate its convolution form on a fine grid, with midpoint/linear interpolation.
+    if not (0 < a < 1): raise ValueError('a must be in (0,1)')
+    threshold = (k/a-k)/h-k/2
+    m = int(np.floor(threshold))
+    if m < 0: return 1.
+    frac = threshold-m
+    t = tails[k]
+    if m+1 >= len(t): raise ValueError('Increase max_excess or decrease LOWER_ALPHA')
+    return float((1-frac)*t[m]+frac*t[m+1])
+
+def inverse_B_K(k, alpha=TARGET_ALPHA):
+    # Root of the full recursively computed bound B_K(alpha_prime)=alpha.
+    return brentq(lambda a: B_K(k,a)-alpha, LOWER_ALPHA, alpha,
+                  xtol=1e-12, rtol=1e-12)
+
+alpha_prime_table = pd.DataFrame({
+    'K': K_VALUES,
+    'alpha_prime': [inverse_B_K(k) for k in K_VALUES],
+    'B_K_0_05': [B_K(k,TARGET_ALPHA) for k in K_VALUES]
+})
+alpha_prime_table
+
+"""### Figure 1 — Pareto bound and inverse calibration"""
+
+table = alpha_prime_table.to_dict(orient='records')
+Ks = [2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+
+plt.rcParams.update({'font.size': 15})
+plt.plot(Ks, [table[i]['alpha_prime'] for i in range(11)], color = 'C0', label = r'$B_K^{-1}(0.05)$')
+plt.plot(Ks, [table[i]['B_K_0_05'] for i in range(11)], color = 'C1', label = r'$B_K(0.05)$')
+plt.axhline(0.05, linestyle = 'dashed', color = 'black')
+plt.xlabel('K')
+plt.ylabel('Level')
+plt.legend()
+save_plot('B_K_plot.png')
 
 """## Section 8.1 — Caption data and descriptive statistics"""
 
@@ -31,6 +106,9 @@ for column in ['mean','votes','not_funny','somewhat_funny','funny']:
         raise ValueError(f'Missing data column: {column}')
 for label, count_column in [('p1','not_funny'),('p2','somewhat_funny'),('p3','funny')]:
     df[label] = df[count_column] / df['votes']
+
+# Scale p1, p2, and p3 to be valid sampling probabilities
+df[['p1', 'p2', 'p3']] = df[['p1', 'p2', 'p3']].div(df[['p1', 'p2', 'p3']].sum(axis=1), axis=0)
 df.head()
 
 # Section 8.1 — Dataset statistics reported in the paper.
@@ -186,9 +264,9 @@ def run_bandits(indices, num_steps, seed = 0):
         reject_p = True
 
     if not reject_ep:
-      best_adj_ep = np.min(p_holm(e_processes))
+      best_adj_ep = np.min(p_holm(1 / e_processes))
       if best_adj_ep < alpha:
-        epvals_adj = p_holm(e_processes)
+        epvals_adj = p_holm(1 / e_processes)
         ep_idx = np.argmin(epvals_adj)
         pulls_arm = pulls[ep_idx]
         pulls_ep = (s, pulls_arm)
@@ -302,7 +380,7 @@ def run_bandits_balanced(num_per_arm, num_steps, seed = 0, arm_seed = 0, checkpo
   np.random.seed(arm_seed)
   indices = []
   for a in range(8):
-    a_indices = np.random.choice(df[df['type'] == a].index, num_per_arm)
+    a_indices = np.random.choice(df[df['type'] == a].index, num_per_arm, replace = False)
     indices.extend(a_indices)
 
   num_iter = num_steps
@@ -336,7 +414,7 @@ def run_bandits_balanced(num_per_arm, num_steps, seed = 0, arm_seed = 0, checkpo
   def eval(y, idx, pi, side = 1):
     type_idx = df_indices['type'][idx]
     beta_values = np.array([a[0] for a in beta_averages.values])
-    psi = beta_values + beta_contrasts[:,type_idx] * (1 / num_per_arm) / pi * (y - df_sim.averages[idx])
+    psi = beta_values + beta_contrasts[:,type_idx] * (1 / num_per_arm) / pi * (y - type_averages.loc[type_idx,'averages'])
     return (1 + side * lam * psi)
 
   e_processes_pos = np.ones(7)
@@ -470,13 +548,14 @@ section83_results.to_csv('section83_batched100_alpha005_replicates.csv', index=F
 
 """## Section 8.4 — Fixed-sample FWER and power"""
 
+
 ALPHA = 0.05
 N = 50
 N_ALT = 20
 N_NULL = N-N_ALT
 REPLICATIONS = 1000
 OBS_PER_CAPTION = np.linspace(100, 1000, 10, dtype=int)
-CALIBRATED_ALPHA_50 = 0.03763148569601143  # Figure 12 constant; table is more accurate
+CALIBRATED_ALPHA_50 = inverse_B_K(N,ALPHA)
 
 # The first 20 captions have the highest means; nulls are closest to the boundary.
 alt_indices = np.arange(N_ALT)
@@ -528,7 +607,7 @@ for i in [0,1,2,3]:
   plt.xlabel('Number of Samples per Arm')
   plt.ylabel('FWER')
   plt.legend()
-plt.show()
+save_plot('fixed_sample_fwer_oracle.png')
 
 """### Figure 12 — Power"""
 
@@ -538,68 +617,4 @@ for i in [0,1,2,3]:
   plt.xlabel('Number of Samples per Arm')
   plt.ylabel('Power')
   plt.legend()
-plt.show()
-
-"""## Full Pareto-sum recursion — Table and Figure 1"""
-
-# Numerical convolution evaluates the entire sum-tail recursion, not its asymptotic expansion.
-K_VALUES = [2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-TARGET_ALPHA = 0.05
-GRID_STEP = 0.005
-LOWER_ALPHA = 0.03
-
-def build_pareto_tails(max_k=max(K_VALUES), h=GRID_STEP, min_alpha=LOWER_ALPHA):
-    # If Z=Y-1 and P(Y>=y)=1/y, P(Z in [jh,(j+1)h)) is known exactly.
-    max_excess = max_k * (1 / min_alpha - 1) + 2
-    n_bins = int(np.ceil(max_excess / h)) + 2
-    edges = np.arange(n_bins+1) * h
-    kernel = 1/(1+edges[:-1]) - 1/(1+edges[1:])
-    pmf = kernel.copy()
-    tails = {}
-    for k in range(1, max_k+1):
-        if k > 1:
-            pmf = fftconvolve(pmf, kernel)[:n_bins]
-            pmf = np.maximum(pmf, 0)
-        if k in K_VALUES:
-            tails[k] = np.concatenate(([1.], 1 - np.cumsum(pmf)))
-    return tails
-
-PARETO_TAILS = build_pareto_tails()
-
-def B_K(k, a, tails=PARETO_TAILS, h=GRID_STEP):
-    # Full recursion (approximated numerically on the bin grid): T_1(s)=1/s; T_k(s)=1/(s-k+1)+integral_1^(s-k+1) T_(k-1)(s-y)/y^2 dy.
-    # Evaluate its convolution form on a fine grid, with midpoint/linear interpolation.
-    if not (0 < a < 1): raise ValueError('a must be in (0,1)')
-    threshold = (k/a-k)/h-k/2
-    m = int(np.floor(threshold))
-    if m < 0: return 1.
-    frac = threshold-m
-    t = tails[k]
-    if m+1 >= len(t): raise ValueError('Increase max_excess or decrease LOWER_ALPHA')
-    return float((1-frac)*t[m]+frac*t[m+1])
-
-def inverse_B_K(k, alpha=TARGET_ALPHA):
-    # Root of the full recursively computed bound B_K(alpha_prime)=alpha.
-    return brentq(lambda a: B_K(k,a)-alpha, LOWER_ALPHA, alpha,
-                  xtol=1e-12, rtol=1e-12)
-
-alpha_prime_table = pd.DataFrame({
-    'K': K_VALUES,
-    'alpha_prime': [inverse_B_K(k) for k in K_VALUES],
-    'B_K_0_05': [B_K(k,TARGET_ALPHA) for k in K_VALUES]
-})
-alpha_prime_table
-
-"""### Figure 1 — Pareto bound and inverse calibration"""
-
-table = alpha_prime_table.to_dict(orient='records')
-Ks = [2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-
-plt.rcParams.update({'font.size': 15})
-plt.plot(Ks, [table[i]['alpha_prime'] for i in range(11)], color = 'C0', label = r'$B_K^{-1}(0.05)$')
-plt.plot(Ks, [table[i]['B_K_0_05'] for i in range(11)], color = 'C1', label = r'$B_K(0.05)$')
-plt.axhline(0.05, linestyle = 'dashed', color = 'black')
-plt.xlabel('K')
-plt.ylabel('Level')
-plt.legend()
-plt.show()
+save_plot('fixed_sample_power_oracle.png')

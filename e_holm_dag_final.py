@@ -11,6 +11,17 @@ Original file is located at
 
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+# Save each plot into the repository's figures/ directory (overwriting existing files).
+FIGURES_DIR = Path(__file__).resolve().parent / "figures"
+FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+def save_plot(filename):
+    path = FIGURES_DIR / filename
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved {path}")
 from tqdm.auto import tqdm
 
 """## Multiple-testing procedures"""
@@ -183,7 +194,7 @@ plt.bar(x=MU_ALTS, height = np.mean(holm_stopping[:,:,1] < holm_stopping[:,:,0],
 plt.xlabel(r'$\mu_{alt}$')
 plt.ylabel('Probability')
 plt.legend()
-plt.show()
+save_plot('holm_probability_python.png')
 
 ratios = np.zeros(4)
 for j in range(4):
@@ -201,7 +212,7 @@ plt.xlabel(r'$\mu_{alt}$')
 plt.ylabel('Avg. Ratio when Unequal')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('holm_when_unequal_ratio_python.png')
 
 """### Figure 5 — Fixed-sample FWER"""
 
@@ -215,7 +226,7 @@ plt.xlabel(r'$\mu_{alt}$')
 plt.ylabel('FWER')
 plt.axhline(0.05, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('holm_fwer_python_no_em.png')
 
 """### Figure 5 — Fixed-sample power"""
 
@@ -229,7 +240,7 @@ plt.xlabel(r'$\mu_{alt}$')
 plt.ylabel('Power')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('holm_power_python_no_em.png')
 
 """### Figure 6 — Relative power"""
 
@@ -241,7 +252,7 @@ for i in range(4):
 plt.xlabel(r'$\mu_{alt}$')
 plt.ylabel('Relative Power')
 plt.legend()
-plt.show()
+save_plot('holm_relative_power_python_no_em.png')
 
 # Section 7.2 — Numerical summaries corresponding to the Figure 4 discussion.
 p_times, e_times = holm_stopping[:,:,0], holm_stopping[:,:,1]
@@ -310,7 +321,7 @@ def e_dag(evals, budget = 'primary', EB_divide = 7):
 
 def p_dag(pvals, budget = 'primary', EB_divide = 7):
   d = EB_divide
-  adj_pvals = np.zeros(7)
+  adj_pvals = np.ones(7)
   if budget == 'primary':
     for i in range(3):
       adj_pvals[i] = pvals[i] * 3
@@ -435,7 +446,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('Probability')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('dag_PB_probability_p_python.png')
 
 """**Equal budget**"""
 
@@ -454,7 +465,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('Probability')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('dag_EB_probability_p_python.png')
 
 """### Figure 9 — e-DAG versus ep-DAG probabilities
 
@@ -472,7 +483,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('Probability')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('dag_PB_probability_ep_python.png')
 
 """**Equal budget**"""
 
@@ -487,7 +498,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('Probability')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('dag_EB_probability_ep_python.png')
 
 """### Figure 10 — Conditional stopping-time ratios
 
@@ -516,7 +527,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('Avg. Ratio when Unequal')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('dag_PB_ratio_full.png')
 
 """**Equal budget**"""
 
@@ -542,7 +553,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('Avg. Ratio when Unequal')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('dag_EB_ratio_full.png')
 
 """### Figure 11 — Fixed-horizon power
 
@@ -561,7 +572,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('Power')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('dag_PB_power_T=50_python.png')
 
 """**Equal budget**"""
 
@@ -577,7 +588,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('Power')
 plt.axhline(1, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+save_plot('dag_EB_power_T=50_python.png')
 
 """### Section 7.3 — Fixed-horizon FWER (reported in text)
 
@@ -596,7 +607,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('FWER')
 plt.axhline(0.05, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+plt.close()  # DAG fixed-horizon FWER: deliberately not saved
 
 """**Equal budget**"""
 
@@ -612,7 +623,7 @@ plt.xlabel(r'$\beta_{13}$')
 plt.ylabel('FWER')
 plt.axhline(0.05, color = 'black', linestyle = 'dashed')
 plt.legend()
-plt.show()
+plt.close()  # DAG fixed-horizon FWER: deliberately not saved
 
 # Section 7.3 — Numeric values reported in the prose (Figures 8–11).
 # Stopping-time comparisons use 200 steps; FWER/power uses 50 steps.

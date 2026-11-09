@@ -12,6 +12,17 @@ Run cells in order.
 
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+# Save each plot into the repository's figures/ directory (overwriting existing files).
+FIGURES_DIR = Path(__file__).resolve().parent / "figures"
+FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+def save_plot(filename):
+    path = FIGURES_DIR / filename
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved {path}")
 from tqdm.auto import tqdm
 
 """## e-Holm and p-Holm"""
@@ -127,7 +138,7 @@ plt.axhline(y=alpha, color = 'black', linestyle = 'dotted')
 plt.legend()
 plt.xlabel('Number of alternatives')
 plt.ylabel('FWER')
-plt.show()
+save_plot('AoS_unif_fwer_n=10_final_seeded.png')
 
 """### Figure 2 — Power"""
 
@@ -143,4 +154,4 @@ plt.axhline(y=1, color = 'black', linestyle = 'dotted')
 plt.legend()
 plt.xlabel('Number of alternatives')
 plt.ylabel('Power')
-plt.show()
+save_plot('AoS_unif_power_n=10_final_seeded.png')
